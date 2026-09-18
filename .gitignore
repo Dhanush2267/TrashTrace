@@ -22,6 +22,3 @@ node_modules/
 Thumbs.db
 .idea/
 .vscode/
-
-# Dataset images - push separately via LFS
-server/dataset/*/images/
