@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+.venv/
+.env
+
+runs/
+*.pt
+*.pth
+*.onnx
+
+data/raw/
+data/processed/
+server/data/raw/
+server/data/processed/
+
+results/
+server/results/
