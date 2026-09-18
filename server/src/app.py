@@ -47,6 +47,9 @@ def get_model():
             model_path = BASE_DIR / MODEL
         print(f"Loading FastAPI segmentation model from: {model_path}")
         MODEL_INSTANCE = YOLO(str(model_path))
+    return MODEL_INSTANCE
+
+
 def get_benchmark_metrics():
     import json
     metrics_path = RESULTS_DIR / "metrics" / "baseline_metrics.json"
