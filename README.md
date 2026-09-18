@@ -140,10 +140,10 @@ graph LR
 ## 9. Sample Detection & Segmentation Results
 
 ### Result Sample 1: Multi-Object Waste Segmentation
-![Waste Segmentation Sample 1](server/results/ablation_visuals/ablation_normal_test_taco_000451.jpg)
+![Waste Segmentation Sample 1](assets/sample_result_1.jpg)
 
 ### Result Sample 2: Overlapping Waste & Instance Separation
-![Waste Segmentation Sample 2](server/results/ablation_visuals/ablation_normal_test_taco_000455.jpg)
+![Waste Segmentation Sample 2](assets/sample_result_2.jpg)
 
 ---
 
