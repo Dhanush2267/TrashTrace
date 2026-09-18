@@ -1,0 +1,16 @@
+# TrashTrace - Real-World Waste Instance Segmentation
+# Core ML & Computer Vision Dependencies
+
+ultralytics>=8.3.0
+opencv-python>=4.8.0
+pillow>=10.0.0
+numpy>=1.24.0
+pandas>=2.0.0
+matplotlib>=3.7.0
+scikit-learn>=1.3.0
+pyyaml>=6.0
+tqdm>=4.65.0
+streamlit>=1.30.0
+
+# Note: Install CUDA-enabled PyTorch separately via official PyTorch wheel index:
+# pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
