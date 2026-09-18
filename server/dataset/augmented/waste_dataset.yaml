@@ -1,0 +1,10 @@
+names:
+  0: plastic
+  1: metal
+  2: paper_cardboard
+  3: glass
+  4: other
+path: server/dataset/augmented
+test: images/test
+train: images/train
+val: images/val
