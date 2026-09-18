@@ -139,11 +139,11 @@ graph LR
 
 ## 9. Sample Detection & Segmentation Results
 
-### Result Sample 1: Multi-Object Waste Segmentation
-![Waste Segmentation Sample 1](assets/sample_result_1.jpg)
+### Result Sample 1: Waste Instance Segmentation Batch 2
+![Waste Instance Segmentation Batch 2](assets/val_batch2_labels.jpg)
 
-### Result Sample 2: Overlapping Waste & Instance Separation
-![Waste Segmentation Sample 2](assets/sample_result_2.jpg)
+### Result Sample 2: Waste Instance Segmentation Batch 1
+![Waste Instance Segmentation Batch 1](assets/val_batch1_labels.jpg)
 
 ---
 
