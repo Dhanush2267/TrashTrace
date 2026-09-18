@@ -1,24 +1,29 @@
+# Python & Caches
 __pycache__/
 *.pyc
 .venv/
 .env
+.pytest_cache/
 
-runs/
+# Model Weights & Temp files
 *.pt
 *.pth
 *.onnx
+bus.jpg
 
+# Datasets (Images & Labels)
+server/dataset/normal/images/
+server/dataset/normal/labels/
+server/dataset/augmented/images/
+server/dataset/augmented/labels/
+server/dataset/combined/
+
+# Legacy data paths
 data/raw/
 data/processed/
-server/data/raw/
-server/data/processed/
+server/data/
 
+# Results & Runs
+runs/
 results/
 server/results/
-
-# Additional
-node_modules/
-*.DS_Store
-Thumbs.db
-.idea/
-.vscode/
