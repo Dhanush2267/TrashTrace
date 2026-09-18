@@ -69,8 +69,16 @@ export const StageView: React.FC<StageViewProps> = ({
             />
           )}
 
-          {/* 2. Waiting State Overlay (when no inference results exist for downstream stage) */}
-          {!isInput && !hasInstances && (
+          {/* 2. Empty Detections Badge (when model inference completed with 0 detections) */}
+          {!isInput && stageResult && !hasInstances && (
+            <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 bg-white/95 backdrop-blur-xs rounded-full border border-[#E5E7EB] shadow-sm px-3.5 py-1.5 flex items-center gap-2 text-xs text-[#6B7280]">
+              <span className="w-2 h-2 rounded-full bg-[#9CA3AF]" aria-hidden="true" />
+              <span className="font-medium">No waste instances detected in this stage</span>
+            </div>
+          )}
+
+          {/* 3. Waiting State Overlay (only when no inference results exist for downstream stage) */}
+          {!isInput && !stageResult && (
             <div
               className="absolute inset-0 bg-white/40 backdrop-blur-[1.5px] rounded-md flex flex-col items-center justify-center p-6 text-center select-none"
               aria-label={`${config.title} waiting state`}

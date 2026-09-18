@@ -8,6 +8,7 @@ interface PipelineNavigationProps {
   onSelectStage: (stageId: PipelineStageId) => void
   hasImage: boolean
   isDemoMode?: boolean
+  hasRealResults?: boolean
   className?: string
 }
 
@@ -16,6 +17,7 @@ export const PipelineNavigation: React.FC<PipelineNavigationProps> = ({
   onSelectStage,
   hasImage,
   isDemoMode = false,
+  hasRealResults = false,
   className,
 }) => {
   return (
@@ -41,6 +43,9 @@ export const PipelineNavigation: React.FC<PipelineNavigationProps> = ({
           } else if (isDemoMode) {
             statusLabel = 'Demo'
             statusDot = 'blue'
+          } else if (hasRealResults) {
+            statusLabel = 'Ready'
+            statusDot = 'green'
           } else {
             statusLabel = 'Pending'
             statusDot = 'gray'

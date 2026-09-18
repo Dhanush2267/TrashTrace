@@ -48,15 +48,15 @@ export const StageStatus: React.FC<StageStatusProps> = ({
             <span className="w-1.5 h-1.5 rounded-full bg-[#16A34A]" aria-hidden="true" />
             Image Active
           </span>
-        ) : isDemoMode && instanceCount > 0 ? (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#EFF6FF] text-[#1D4ED8] border border-[#BFDBFE]">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#2563EB]" aria-hidden="true" />
+        ) : instanceCount > 0 ? (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#F0FDF4] text-[#15803D] border border-[#BBF7D0]">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#16A34A]" aria-hidden="true" />
             {instanceCount} {instanceCount === 1 ? 'Instance' : 'Instances'} Visualized
           </span>
         ) : (
           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#F3F4F6] text-[#4B5563] border border-[#E5E7EB]">
             <span className="w-1.5 h-1.5 rounded-full bg-[#9CA3AF]" aria-hidden="true" />
-            Awaiting Model Output
+            {isDemoMode ? 'Awaiting Model Output' : 'No Objects Detected'}
           </span>
         )}
       </div>

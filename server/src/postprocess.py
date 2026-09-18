@@ -250,9 +250,53 @@ def postprocess_instances(instances: list, mode: str = "full") -> list:
     return output_instances
 
 
+CLASS_COLORS = [
+    (0, 255, 127),   # plastic - spring green
+    (255, 191, 0),   # metal - amber
+    (255, 105, 180), # paper - pink
+    (0, 215, 255),   # glass - cyan
+    (147, 112, 219)  # other - purple
+]
+
+
 def apply_mask_overlay(image: np.ndarray, mask: np.ndarray, color=(0, 255, 0), alpha=0.5):
     """Apply transparent mask overlay onto an image."""
     colored_mask = np.zeros_like(image, dtype=np.uint8)
     colored_mask[mask > 0] = color
     overlay = cv2.addWeighted(image, 1 - alpha, colored_mask, alpha, 0)
     return overlay
+
+
+def render_instances_overlay(img: np.ndarray, instances: list) -> np.ndarray:
+    """Render instance masks and bounding boxes on an image."""
+    canvas = img.copy()
+    overlay = img.copy()
+
+    for inst in instances:
+        mask = inst["mask"]
+        cls_id = inst["class_id"]
+        cls_name = inst.get("class_name", str(cls_id))
+        conf = inst.get("confidence", 1.0)
+        bbox = inst.get("bbox", None)
+
+        color = CLASS_COLORS[cls_id % len(CLASS_COLORS)]
+
+        # Fill mask
+        overlay[mask > 0] = color
+
+        # Polygon contour
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        cv2.drawContours(canvas, contours, -1, color, 2)
+
+        # Bounding box & text
+        if bbox is not None:
+            bx1, by1, bx2, by2 = [int(v) for v in bbox]
+            cv2.rectangle(canvas, (bx1, by1), (bx2, by2), color, 1)
+            txt = f"{cls_name} {conf:.2f}"
+            cv2.putText(canvas, txt, (bx1, max(15, by1 - 5)), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 2)
+            cv2.putText(canvas, txt, (bx1, max(15, by1 - 5)), cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1)
+
+    alpha = 0.4
+    blended = cv2.addWeighted(overlay, alpha, canvas, 1 - alpha, 0)
+    return blended
+

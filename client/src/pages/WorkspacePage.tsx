@@ -6,10 +6,13 @@ import type {
   VisualizationSettings,
   ClassCategoryItem,
   PerClassApRow,
+  StageResult,
 } from '@/types'
 import { formatBytes, isAcceptedImageType } from '@/lib/utils'
 import { getStageConfig } from '@/lib/pipelineConfig'
 import { getDemoScenario } from '@/demo/scenarios'
+import { mlApiService } from '@/services/api'
+import { adaptApiResponseToStageResults } from '@/services/resultAdapter'
 import { ImageUploader } from '@/components/workspace/ImageUploader'
 import { ImageMetadata } from '@/components/workspace/ImageMetadata'
 import { WorkspaceToolbar } from '@/components/workspace/WorkspaceToolbar'
@@ -59,6 +62,11 @@ export const WorkspacePage: React.FC = () => {
     return 'normal'
   })
 
+  // Real inference state
+  const [realStageResults, setRealStageResults] = useState<Record<PipelineStageId, StageResult> | null>(null)
+  const [isProcessing, setIsProcessing] = useState<boolean>(false)
+  const abortControllerRef = useRef<AbortController | null>(null)
+
   // Layer & selection settings
   const [vizSettings, setVizSettings] = useState<VisualizationSettings>({
     showMasks: true,
@@ -85,14 +93,46 @@ export const WorkspacePage: React.FC = () => {
 
   useEffect(() => {
     return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort()
+      }
       cleanupActiveUrl()
     }
   }, [cleanupActiveUrl])
+
+  const runRealInference = useCallback(async (file: File) => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+    }
+
+    const controller = new AbortController()
+    abortControllerRef.current = controller
+
+    setIsProcessing(true)
+    setGlobalError(null)
+
+    try {
+      const response = await mlApiService.predict(file, { conf: 0.25, postprocess: 'full' }, controller.signal)
+      const adapted = adaptApiResponseToStageResults(response)
+      setRealStageResults(adapted)
+      setIsDemoMode(false)
+    } catch (err: any) {
+      if (err.name === 'AbortError' || err.message?.includes('aborted')) {
+        return
+      }
+      console.error('Real inference failed:', err)
+      const msg = err.message || 'Model inference failed. Ensure the FastAPI backend is running.'
+      setGlobalError(`Backend Error: ${msg}`)
+    } finally {
+      setIsProcessing(false)
+    }
+  }, [])
 
   const handleImageSelected = useCallback(
     (file: File) => {
       setGlobalError(null)
       cleanupActiveUrl()
+      setRealStageResults(null)
 
       const objectUrl = URL.createObjectURL(file)
       activeUrlRef.current = objectUrl
@@ -118,6 +158,7 @@ export const WorkspacePage: React.FC = () => {
         }
 
         setCurrentImage(metadata)
+        runRealInference(file)
       }
 
       img.onerror = () => {
@@ -127,7 +168,7 @@ export const WorkspacePage: React.FC = () => {
 
       img.src = objectUrl
     },
-    [cleanupActiveUrl],
+    [cleanupActiveUrl, runRealInference],
   )
 
   // Automated testing query parameter loader
@@ -167,8 +208,13 @@ export const WorkspacePage: React.FC = () => {
   }, [handleImageSelected])
 
   const handleRemoveImage = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+      abortControllerRef.current = null
+    }
     cleanupActiveUrl()
     setCurrentImage(null)
+    setRealStageResults(null)
     setActiveStage('input')
     setIsCompareActive(false)
     setVizSettings((prev) => ({ ...prev, selectedInstanceId: null, highlightedClassId: null }))
@@ -181,18 +227,22 @@ export const WorkspacePage: React.FC = () => {
   const activeStageConfig = getStageConfig(activeStage)
 
   const currentStageResult = useMemo(() => {
-    if (!isDemoMode) return undefined
-    return currentScenario.stageResults[activeStage]
-  }, [isDemoMode, currentScenario, activeStage])
+    if (isDemoMode) {
+      return currentScenario.stageResults[activeStage]
+    }
+    return realStageResults ? realStageResults[activeStage] : undefined
+  }, [isDemoMode, currentScenario, activeStage, realStageResults])
 
   // Upstream result for stage comparison
   const { beforeResult, beforeLabel, afterLabel, canCompare } = useMemo(() => {
-    if (!isDemoMode)
+    const stageSource = isDemoMode ? currentScenario.stageResults : realStageResults
+    if (!stageSource) {
       return { beforeResult: undefined, beforeLabel: '', afterLabel: '', canCompare: false }
+    }
 
     if (activeStage === 'watershed') {
       return {
-        beforeResult: currentScenario.stageResults.yolo,
+        beforeResult: stageSource.yolo,
         beforeLabel: 'YOLO (Raw)',
         afterLabel: 'Watershed (Separated)',
         canCompare: true,
@@ -200,7 +250,7 @@ export const WorkspacePage: React.FC = () => {
     }
     if (activeStage === 'morphology') {
       return {
-        beforeResult: currentScenario.stageResults.yolo,
+        beforeResult: stageSource.yolo,
         beforeLabel: 'YOLO (Raw)',
         afterLabel: 'Morphology (Clean)',
         canCompare: true,
@@ -208,7 +258,7 @@ export const WorkspacePage: React.FC = () => {
     }
     if (activeStage === 'final') {
       return {
-        beforeResult: currentScenario.stageResults.yolo,
+        beforeResult: stageSource.yolo,
         beforeLabel: 'YOLO (Initial)',
         afterLabel: 'Final Result',
         canCompare: true,
@@ -216,7 +266,7 @@ export const WorkspacePage: React.FC = () => {
     }
 
     return { beforeResult: undefined, beforeLabel: '', afterLabel: '', canCompare: false }
-  }, [isDemoMode, currentScenario, activeStage])
+  }, [isDemoMode, currentScenario, realStageResults, activeStage])
 
   // Extract dynamic class legend from current stage instances
   const dynamicCategories: ClassCategoryItem[] = useMemo(() => {
@@ -325,6 +375,19 @@ export const WorkspacePage: React.FC = () => {
         </div>
       )}
 
+      {/* Real Inference Processing Notice */}
+      {isProcessing && (
+        <div
+          role="status"
+          className="px-4 py-3 rounded-lg bg-[#EFF6FF] border border-[#BFDBFE] flex items-center gap-3 text-xs text-[#1E40AF] animate-pulse"
+        >
+          <span className="w-4 h-4 border-2 border-[#2563EB] border-t-transparent rounded-full animate-spin shrink-0" />
+          <span className="font-medium">
+            Running YOLO26n-Seg deep learning model &amp; selective post-processing pipeline...
+          </span>
+        </div>
+      )}
+
       {/* Main Workspace */}
       {!currentImage ? (
         /* Empty State */
@@ -379,7 +442,15 @@ export const WorkspacePage: React.FC = () => {
           {/* 1. Demo Mode Banner & Scenario Switcher */}
           <DemoModeBanner
             isDemoMode={isDemoMode}
-            onToggleDemoMode={() => setIsDemoMode((prev) => !prev)}
+            onToggleDemoMode={() => {
+              setIsDemoMode((prev) => {
+                const next = !prev
+                if (!next && !realStageResults && currentImage?.file) {
+                  runRealInference(currentImage.file)
+                }
+                return next
+              })
+            }}
             currentScenarioId={currentScenarioId}
             onSelectScenario={handleSelectScenario}
           />
@@ -390,6 +461,7 @@ export const WorkspacePage: React.FC = () => {
             onSelectStage={handleSelectStage}
             hasImage={Boolean(currentImage)}
             isDemoMode={isDemoMode}
+            hasRealResults={Boolean(realStageResults)}
           />
 
           {/* 3. Action Toolbar */}

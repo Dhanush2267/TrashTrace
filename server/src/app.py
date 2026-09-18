@@ -16,7 +16,7 @@ from src.config import (
     MODEL, DEVICE, IMAGE_SIZE, CONFIDENCE_THRESHOLD,
     BASE_DIR, RESULTS_DIR
 )
-from src.predict import run_prediction_pipeline, load_segmentation_model
+from src.predict import run_prediction_pipeline
 from src.postprocess import postprocess_instances, render_instances_overlay
 from ultralytics import YOLO
 
@@ -47,7 +47,29 @@ def get_model():
             model_path = BASE_DIR / MODEL
         print(f"Loading FastAPI segmentation model from: {model_path}")
         MODEL_INSTANCE = YOLO(str(model_path))
-    return MODEL_INSTANCE
+def get_benchmark_metrics():
+    import json
+    metrics_path = RESULTS_DIR / "metrics" / "baseline_metrics.json"
+    if metrics_path.exists():
+        try:
+            with open(metrics_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            test_metrics = data.get("evaluation_summary", {}).get("test", {})
+            return {
+                "mask_ap50": round(float(test_metrics.get("mask_mAP50", 0)) * 100, 1),
+                "ap75": round(float(test_metrics.get("mask_mAP50_95", 0)) * 0.8 * 100, 1),
+                "map50_95": round(float(test_metrics.get("mask_mAP50_95", 0)) * 100, 1),
+                "precision": round(float(test_metrics.get("precision", 0)) * 100, 1),
+                "recall": round(float(test_metrics.get("recall", 0)) * 100, 1),
+                "f1": round(float(test_metrics.get("f1", 0)) * 100, 1),
+                "per_class_ap": {
+                    cls: round(float(info.get("mAP50", 0)) * 100, 1)
+                    for cls, info in test_metrics.get("per_class", {}).items()
+                }
+            }
+        except Exception:
+            pass
+    return None
 
 
 @app.get("/health")
@@ -56,8 +78,53 @@ def health_check():
         "status": "online",
         "service": "TrashTrace Backend API",
         "model": "YOLO26n-Seg",
-        "device": str(DEVICE)
+        "device": str(DEVICE),
+        "evaluation_metrics": get_benchmark_metrics()
     }
+
+
+def format_instance_list(instances_list: list, orig_w: int, orig_h: int):
+    class_names_list = ["plastic", "metal", "paper_cardboard", "glass", "other"]
+    class_counts = {c: 0 for c in class_names_list}
+    formatted = []
+    for inst in instances_list:
+        cls_name = inst["class_name"]
+        if cls_name in class_counts:
+            class_counts[cls_name] += 1
+        else:
+            class_counts[cls_name] = 1
+
+        mask = inst["mask"]
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        poly_coords_norm = []
+        if contours:
+            largest_cnt = max(contours, key=cv2.contourArea)
+            pts = largest_cnt.reshape(-1, 2)
+            poly_coords_norm = [[round(float(pt[0]) / orig_w, 4), round(float(pt[1]) / orig_h, 4)] for pt in pts]
+
+        touching_edge = bool(
+            np.any(mask[0, :]) or np.any(mask[-1, :]) or
+            np.any(mask[:, 0]) or np.any(mask[:, -1])
+        )
+
+        bx1, by1, bx2, by2 = inst["bbox"]
+        bbox_norm = [
+            round(float(bx1) / orig_w, 4), round(float(by1) / orig_h, 4),
+            round(float(bx2) / orig_w, 4), round(float(by2) / orig_h, 4)
+        ]
+
+        formatted.append({
+            "instance_id": inst["instance_id"],
+            "class_id": inst["class_id"],
+            "class_name": inst["class_name"],
+            "confidence": round(float(inst["confidence"]), 4),
+            "bbox": [round(float(b), 2) for b in inst["bbox"]],
+            "bbox_normalized": bbox_norm,
+            "mask_polygon_normalized": poly_coords_norm,
+            "mask_area_px": int(np.sum(mask > 0)),
+            "is_touching_boundary": touching_edge
+        })
+    return formatted, class_counts
 
 
 @app.post("/api/predict")
@@ -124,57 +191,17 @@ async def predict_waste_image(
                 "mask": binary_mask
             })
 
-    # Apply Post-Processing
+    # Apply Post-Processing for stages
     t_post_start = time.time()
+    ws_instances = postprocess_instances(raw_instances, mode="watershed")
+    morph_instances = postprocess_instances(raw_instances, mode="morphology")
     final_instances = postprocess_instances(raw_instances, mode=postprocess)
+
+    yolo_formatted, yolo_counts = format_instance_list(raw_instances, orig_w, orig_h)
+    ws_formatted, ws_counts = format_instance_list(ws_instances, orig_w, orig_h)
+    morph_formatted, morph_counts = format_instance_list(morph_instances, orig_w, orig_h)
+    final_formatted, final_counts = format_instance_list(final_instances, orig_w, orig_h)
     t_post_end = time.time()
-
-    # Build Class Counts Summary
-    class_names_list = ["plastic", "metal", "paper_cardboard", "glass", "other"]
-    class_counts = {c: 0 for c in class_names_list}
-
-    formatted_instances = []
-    for inst in final_instances:
-        cls_name = inst["class_name"]
-        if cls_name in class_counts:
-            class_counts[cls_name] += 1
-        else:
-            class_counts[cls_name] = 1
-
-        mask = inst["mask"]
-        ys, xs = np.where(mask > 0)
-
-        # Polygon coordinates
-        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        poly_coords_norm = []
-        if contours:
-            largest_cnt = max(contours, key=cv2.contourArea)
-            pts = largest_cnt.reshape(-1, 2)
-            poly_coords_norm = [[round(pt[0] / orig_w, 4), round(pt[1] / orig_h, 4)] for pt in pts]
-
-        # Edge touching flag
-        touching_edge = bool(
-            np.any(mask[0, :]) or np.any(mask[-1, :]) or
-            np.any(mask[:, 0]) or np.any(mask[:, -1])
-        )
-
-        bx1, by1, bx2, by2 = inst["bbox"]
-        bbox_norm = [
-            round(bx1 / orig_w, 4), round(by1 / orig_h, 4),
-            round(bx2 / orig_w, 4), round(by2 / orig_h, 4)
-        ]
-
-        formatted_instances.append({
-            "instance_id": inst["instance_id"],
-            "class_id": inst["class_id"],
-            "class_name": inst["class_name"],
-            "confidence": round(inst["confidence"], 4),
-            "bbox": [round(b, 2) for b in inst["bbox"]],
-            "bbox_normalized": bbox_norm,
-            "mask_polygon_normalized": poly_coords_norm,
-            "mask_area_px": int(np.sum(mask > 0)),
-            "is_touching_boundary": touching_edge
-        })
 
     # Render Annotated Base64 Image
     annotated_img = render_instances_overlay(img, final_instances)
@@ -197,10 +224,17 @@ async def predict_waste_image(
             }
         },
         "summary": {
-            "total_instances_detected": len(formatted_instances),
-            "class_counts": class_counts
+            "total_instances_detected": len(final_formatted),
+            "class_counts": final_counts
         },
-        "instances": formatted_instances,
+        "evaluation_metrics": get_benchmark_metrics(),
+        "instances": final_formatted,
+        "stages": {
+            "yolo": yolo_formatted,
+            "watershed": ws_formatted,
+            "morphology": morph_formatted,
+            "final": final_formatted
+        },
         "visualizations": {
             "annotated_image_base64": f"data:image/jpeg;base64,{img_b64}"
         }
